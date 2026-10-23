@@ -67,54 +67,55 @@ The interface pairs a procedural 3D cutaway model of a heavy-duty frame gas turb
 
 ---
 
-## 3. How It Works
+## System Architecture
+
+The application implements a Retrieval-Augmented Generation (RAG) architecture tailored for technical engineering documentation. The diagram below illustrates the end-to-end workflow, from document ingestion to grounded answer generation:
 
 ```mermaid
 flowchart TD
-    A["Official GE PDF<br/>(GER-3620-P.pdf)"] --> B["PyPDF Page-by-Page Extraction"]
-    B --> C["Metadata Parsing<br/>(Physical Page, Printed Page, Section)"]
-    C --> D["Recursive Character Chunking<br/>(~800 chars, 120 overlap)"]
-    D --> E["Dense Embedding Generation<br/>(all-MiniLM-L6-v2)"]
-    E --> F[("Persistent ChromaDB<br/>(chroma_db/)")]
+    A[User asks a question via UI or Exam Chip] --> B[Question normalization and validation]
+    B --> C[ChromaDB similarity search with cosine distance]
     
-    G["User Question / Exam Chip"] --> H["Cosine Similarity Retrieval<br/>(Top-k Passages)"]
-    F <--> H
+    D[Official GE GER-3620-P PDF] --> E[Extract text and page metadata with PyPDF]
+    E --> F[Split text into chunks: 800 chars, 120 overlap]
+    F --> G[Generate dense embeddings with all-MiniLM-L6-v2]
+    G --> H[Persist vectors in ChromaDB with SHA-256 cache]
+    H --> C
     
-    H --> I{"Evidence Validation Check<br/>(Distance & Grounding Gating)"}
+    C --> I{Sufficient supporting evidence?<br/>Distance <= 1.05 and domain valid}
+    I -- No --> J[Return exactly: Not found<br/>LLM bypassed to prevent hallucination]
+    I -- Yes --> K{GEMINI_API_KEY configured?}
     
-    I -- "Missing / Unsupported / Out-of-Domain" --> J["Return exactly: 'Not found'<br/>(Gemini Bypassed)"]
+    K -- Yes --> L[Google Gemini Flash<br/>Grounded generation with strict prompt]
+    K -- No / Fallback --> M[Local Extractive Answerer<br/>Verbatim sentence extraction]
     
-    I -- "Supported by Text" --> K{"GEMINI_API_KEY Available?"}
-    K -- "Yes" --> L["Google Gemini Flash<br/>(Strict Grounded Prompt)"]
-    K -- "No / Offline" --> M["Local Extractive Generator<br/>(Verbatim Supporting Text)"]
-    
-    L --> N["Format Citation & Excerpt<br/>(Physical P., Printed P., Section)"]
+    L --> N[Format source citation<br/>Physical page, printed page, section, excerpt]
     M --> N
-    N --> O["Floating Glassmorphic Chat Panel"]
+    N --> O[Display answer and citations in Floating Chat Panel]
     J --> O
 ```
 
-### Detailed Pipeline Stages
+### Workflow Explanation
 
-1. **Document Ingestion & Metadata Mapping (`rag_pipeline.py`):**
-   - Automatically downloads the official GE Vernova technical manual `GER-3620-P.pdf` (60 pages).
-   - Maps each passage to both its **Physical PDF Page Number** (e.g. Page 25 of 60) and its **Printed Page Number** (e.g. Page 21) from the document header.
-   - Attaches section headings based on the official GE Table of Contents.
+1. **Document Ingestion & Indexing:**
+   - The official technical manual (`GER-3620-P.pdf`, 60 pages) is parsed page-by-page using `pypdf`.
+   - Each page extracts dual metadata: **Physical PDF Page Number** (1 to 60) and **Printed Page Number** (matching document TOC headers).
+   - Text is split into overlapping chunks (800 characters, 120 character overlap) via `RecursiveCharacterTextSplitter`.
+   - Embeddings are generated locally using `sentence-transformers/all-MiniLM-L6-v2` (384 dimensions) and stored in persistent ChromaDB (`chroma_db/`). SHA-256 hashing allows immediate index reuse on application relaunch.
 
-2. **Chunking & Vector Indexing:**
-   - Splits text using recursive character chunking (800 characters, 120 character overlap).
-   - Computes dense vector embeddings locally using `sentence-transformers/all-MiniLM-L6-v2`.
-   - Persists vectors to `chroma_db/`. SHA-256 fingerprinting ensures the index is only built once and reloaded instantaneously on subsequent launches.
+2. **Query Processing & Retrieval:**
+   - User queries (typed or clicked via exam question chips) are normalized and evaluated against ChromaDB using cosine distance metric.
+   - The top 4 most relevant chunks are retrieved with distance similarity scores.
 
 3. **Evidence Validation & Anti-Hallucination Gating:**
-   - Retrieves top matching passages using cosine similarity.
-   - Enforces strict distance thresholds (`MAX_COSINE_DISTANCE = 1.05`).
-   - Out-of-scope or negative-domain queries (such as capital purchase price or material melting points) are rejected before LLM synthesis.
-   - **Crucial Rule:** If evidence verification fails, Gemini is bypassed entirely and the system returns exactly `Not found`.
+   - The best retrieved score is evaluated against `MAX_COSINE_DISTANCE = 1.05`.
+   - Irrelevant, contradictory, or negative-domain queries (such as capital purchase pricing or elemental melting points) are rejected.
+   - If evidence is insufficient, the system returns strictly **`Not found`** and bypasses the LLM completely to prevent hallucination.
 
-4. **Grounded Synthesis & Citation Formatting:**
-   - Supported passages are supplied to Google Gemini Flash with strict instructions prohibiting external knowledge or speculation.
-   - Citations include document name, physical page number, printed page number, section name, and an exact quotation excerpt.
+4. **Grounded Answer Generation & Citations:**
+   - **Gemini Flash Path:** When `GEMINI_API_KEY` is present and `USE_GEMINI=true`, Google Gemini Flash (`gemini-2.5-flash`) synthesizes a concise, grounded answer using only retrieved context.
+   - **Local Extractive Fallback:** If the API key is not configured or network calls fail, the local extractive engine selects the most relevant verbatim sentence from the supporting chunk.
+   - Both paths format complete citations: physical PDF page, printed document page, section heading, and exact supporting excerpt.
 
 ---
 
