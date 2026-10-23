@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Gas Turbine Viewer</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three.module.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="viewer-container">
+    <!-- Header Badge -->
+    <div class="viewer-header">
+      <div class="model-badge">
+        <span class="status-dot"></span>
+        <span>Heavy-Duty Gas Turbine (Frame-Class)</span>
+      </div>
+    </div>
+
+    <!-- 3D Canvas -->
+    <canvas id="turbine-canvas"></canvas>
+
+    <!-- Overlay Controls (Bottom Left) -->
+    <div class="viewer-controls">
+      <button id="btn-reset" class="control-btn" title="Reset camera to default isometric view">
+        <span>⟲</span> Reset View
+      </button>
+      <button id="btn-rotate" class="control-btn" title="Toggle automatic rotation and rotor spin">
+        <span>⏸</span> Rotation
+      </button>
+    </div>
+
+    <!-- Airflow Direction Indicator (Bottom Right) -->
+    <div class="flow-legend">
+      <span>AIR INTAKE</span>
+      <span class="flow-arrows">──▶ ──▶ ──▶</span>
+      <span>EXHAUST</span>
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loading-overlay">
+      <div class="spinner"></div>
+      <div class="loading-text">Initializing 3D Turbine Model…</div>
+    </div>
+
+    <!-- WebGL Fallback Schematic View -->
+    <div id="fallback-container" style="display: none;">
+      <svg class="fallback-svg" viewBox="0 0 760 180" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#14181d"/>
+            <stop offset="100%" stop-color="#1a2028"/>
+          </linearGradient>
+          <linearGradient id="flowGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#3aa0ff"/>
+            <stop offset="100%" stop-color="#ff8a3d"/>
+          </linearGradient>
+        </defs>
+        
+        <!-- Base Skid -->
+        <rect x="20" y="145" width="720" height="18" rx="4" fill="#1e232b" stroke="#262c34"/>
+        <rect x="80" y="125" width="30" height="20" fill="#262c34"/>
+        <rect x="360" y="125" width="30" height="20" fill="#262c34"/>
+        <rect x="640" y="125" width="30" height="20" fill="#262c34"/>
+
+        <!-- Central Shaft -->
+        <line x1="50" y1="75" x2="680" y2="75" stroke="#9aa3ae" stroke-width="8" stroke-linecap="round"/>
+
+        <!-- Inlet Bellmouth -->
+        <polygon points="40,25 110,42 110,108 40,125" fill="#5b636e" stroke="#262c34" stroke-width="2"/>
+        <text x="75" y="79" fill="#e6eaf0" font-size="11" font-weight="600" text-anchor="middle">INLET</text>
+
+        <!-- Axial Compressor -->
+        <polygon points="120,42 290,52 290,98 120,108" fill="#4a525d" stroke="#262c34" stroke-width="2"/>
+        <text x="205" y="79" fill="#e6eaf0" font-size="11" font-weight="600" text-anchor="middle">COMPRESSOR (10-STAGE)</text>
+
+        <!-- Combustor Chambers -->
+        <rect x="300" y="32" width="130" height="86" rx="6" fill="#7a7f87" stroke="#ff8a3d" stroke-width="2"/>
+        <circle cx="365" cy="75" r="18" fill="#ff8a3d" opacity="0.3"/>
+        <circle cx="365" cy="75" r="9" fill="#ffb020"/>
+        <text x="365" y="79" fill="#ffffff" font-size="11" font-weight="700" text-anchor="middle">COMBUSTOR</text>
+
+        <!-- Turbine (Hot Gas Path) -->
+        <polygon points="440,50 560,38 560,112 440,100" fill="#8c6a52" stroke="#262c34" stroke-width="2"/>
+        <text x="500" y="79" fill="#ffffff" font-size="11" font-weight="600" text-anchor="middle">TURBINE (3-STAGE)</text>
+
+        <!-- Exhaust Diffuser -->
+        <polygon points="570,38 680,24 680,126 570,112" fill="#3f454d" stroke="#262c34" stroke-width="2"/>
+        <text x="625" y="79" fill="#e6eaf0" font-size="11" font-weight="600" text-anchor="middle">EXHAUST</text>
+
+        <!-- Airflow Indicator Line -->
+        <line x1="40" y1="14" x2="680" y2="14" stroke="url(#flowGrad)" stroke-width="3" stroke-dasharray="8 4"/>
+      </svg>
+      <div class="fallback-title">Gas Turbine System Schematic</div>
+      <div class="fallback-desc">3D WebGL rendering is currently unavailable in this environment. Showing 2D functional industrial cross-section.</div>
+    </div>
+  </div>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>

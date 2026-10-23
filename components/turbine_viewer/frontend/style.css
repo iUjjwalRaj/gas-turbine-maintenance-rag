@@ -1,0 +1,234 @@
+:root {
+  --bg-0: #080B10;
+  --bg-1: #10141A;
+  --bg-2: #181E26;
+  --line: #222832;
+  --text: #E6EAF0;
+  --muted: #8A94A3;
+  --blue: #3AA0FF;
+  --blue-glow: rgba(58, 160, 255, 0.28);
+  --amber: #FFB020;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body, html {
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: var(--bg-0);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+#viewer-container {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  min-height: 100vh;
+  background: radial-gradient(circle at 62% 45%, #101724 0%, var(--bg-0) 80%);
+  overflow: hidden;
+  border: none;
+  border-radius: 0;
+}
+
+#turbine-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+}
+
+#turbine-canvas:active {
+  cursor: grabbing;
+}
+
+/* Overlay Top Header Badge */
+.viewer-header {
+  display: none;
+}
+
+.model-badge {
+  background: rgba(16, 20, 26, 0.75);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--blue);
+  box-shadow: 0 0 10px var(--blue);
+  animation: pulse-dot 2.5s infinite ease-in-out;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+
+/* Control Bar Bottom Right */
+.viewer-controls {
+  position: absolute;
+  bottom: 20px;
+  right: 24px;
+  display: flex;
+  gap: 10px;
+  z-index: 10;
+}
+
+.control-btn {
+  background: rgba(16, 20, 26, 0.80);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text);
+  padding: 8px 16px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.25s ease;
+  user-select: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.control-btn:hover {
+  background: rgba(24, 32, 42, 0.95);
+  border-color: var(--blue);
+  color: #ffffff;
+  box-shadow: 0 0 16px var(--blue-glow);
+}
+
+.control-btn:active {
+  transform: translateY(1px);
+}
+
+/* Flow Direction Legend Bottom Right */
+.flow-legend {
+  position: absolute;
+  bottom: 68px;
+  right: 24px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(16, 20, 26, 0.75);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  color: var(--muted);
+  pointer-events: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.flow-arrows {
+  color: var(--blue);
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+
+/* Loading Overlay */
+#loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-0);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  z-index: 100;
+  transition: opacity 0.4s ease, visibility 0.4s ease;
+}
+
+#loading-overlay.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--line);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-text {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+/* WebGL Fallback View */
+#fallback-container {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-0);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  z-index: 50;
+}
+
+.fallback-svg {
+  width: 100%;
+  max-width: 680px;
+  height: auto;
+  margin-bottom: 16px;
+}
+
+.fallback-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.fallback-desc {
+  font-size: 12px;
+  color: var(--muted);
+  max-width: 520px;
+}

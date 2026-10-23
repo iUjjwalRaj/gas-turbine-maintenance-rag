@@ -23,3 +23,6 @@ chroma_db/
 # OS Files
 .DS_Store
 Thumbs.db
+
+# Scratch / Temporary Test Scripts
+scratch/
