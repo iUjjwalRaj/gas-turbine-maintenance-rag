@@ -43,10 +43,11 @@ TOP_K = int(os.getenv("TOP_K", "4"))
 # For sentence-transformers cosine distance: 0 = identical, ~0.5-0.9 = semantically related technical passages, > 1.1 = unrelated.
 MAX_COSINE_DISTANCE = float(os.getenv("MAX_COSINE_DISTANCE", "1.05"))
 
-# Optional LLM configuration
-USE_LLM = os.getenv("USE_LLM", "false").lower() in ("true", "1", "yes")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
+# Google Gemini Generative LLM configuration
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY", "")
+# Default Gemini Flash model ID (gemini-2.5-flash is the active stable Flash release in Google AI Studio)
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+USE_GEMINI = os.getenv("USE_GEMINI", "true" if GEMINI_API_KEY else "false").lower() in ("true", "1", "yes")
 
 # Metadata tracking file for index cache invalidation
 INDEX_METADATA_FILE = CHROMA_PERSIST_DIR / "index_meta.json"

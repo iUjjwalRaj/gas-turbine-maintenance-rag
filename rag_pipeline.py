@@ -20,6 +20,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import pypdf
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -32,11 +34,14 @@ from config import (
     DEFAULT_PDF_FILENAME,
     DEFAULT_PDF_PATH,
     EMBEDDING_MODEL_NAME,
+    GEMINI_API_KEY,
+    GEMINI_MODEL,
     INDEX_METADATA_FILE,
     MAX_COSINE_DISTANCE,
     OFFICIAL_PDF_URL,
     PDF_PATH,
     TOP_K,
+    USE_GEMINI,
 )
 
 # Table of Contents mapping for GER-3620 Rev P (Printed Page -> Section Name)
@@ -633,18 +638,44 @@ def generate_extractive_answer(query: str, chunks: List[RetrievedChunk]) -> Tupl
     return best_chunk.content[:400] + "...", best_chunk, best_chunk.content[:250]
 
 
+def get_gemini_llm(
+    api_key: Optional[str] = None,
+    model_name: Optional[str] = None,
+) -> Optional[ChatGoogleGenerativeAI]:
+    """Instantiate LangChain ChatGoogleGenerativeAI client.
+
+    Reads API key from GEMINI_API_KEY (or GOOGLE_API_KEY) in .env.
+    Defaults to GEMINI_MODEL (e.g. 'gemini-2.5-flash').
+    """
+    key = api_key or GEMINI_API_KEY
+    if not key or not key.strip():
+        return None
+    model = model_name or GEMINI_MODEL
+    try:
+        return ChatGoogleGenerativeAI(
+            model=model,
+            google_api_key=key.strip(),
+            temperature=0.0,
+            max_retries=2,
+        )
+    except Exception:
+        return None
+
+
 def answer_question(
     query: str,
     vectorstore: Chroma,
     top_k: int = TOP_K,
-    use_llm: bool = False,
-    openai_api_key: Optional[str] = None,
+    use_gemini: bool = USE_GEMINI,
+    gemini_api_key: Optional[str] = None,
+    gemini_model: Optional[str] = None,
+    gemini_llm: Optional[Any] = None,
 ) -> RAGResponse:
-    """Execute the complete RAG query pipeline.
+    """Execute the complete RAG query pipeline with Gemini Flash & local fallback.
 
     1. Similarity retrieval from ChromaDB
-    2. Evidence validation (returns exactly 'Not found' if unsupported)
-    3. Answer generation (extractive or optional grounded LLM)
+    2. Evidence validation (returns exactly 'Not found' if unsupported; Gemini never overrides failed check)
+    3. Grounded Gemini answer generation (if enabled) or reliable extractive answerer
     4. Source citation packaging
     """
     cleaned_query = query.strip()
@@ -671,6 +702,8 @@ def answer_question(
 
     is_supported, best_chunk, reason = validate_evidence(cleaned_query, retrieved)
 
+    # CRITICAL: If evidence check fails, return immediately 'Not found'.
+    # Gemini must never guess or override a failed evidence check.
     if not is_supported or best_chunk is None:
         return RAGResponse(
             answer="Not found",
@@ -683,57 +716,46 @@ def answer_question(
             retrieved_chunks=chunks_dict_list,
         )
 
-    # Optional Generative LLM answering (if requested and API key provided)
-    if use_llm and openai_api_key:
+    # If Gemini is enabled, initialize client (or use injected mock in tests)
+    llm = gemini_llm
+    if llm is None and use_gemini:
+        llm = get_gemini_llm(api_key=gemini_api_key, model_name=gemini_model)
+
+    if llm is not None:
         try:
-            import urllib.request
-            # Grounded prompt instructing exact reliance on retrieved text
             context_text = "\n\n---\n\n".join(
-                f"[Document: {c.source}, Page: {c.page}, Section: {c.section}]\n{c.content}"
+                f"[Document: {c.source}, Physical PDF Page: {c.page}, Printed Page: {c.printed_page}, Section: {c.section}]\n{c.content}"
                 for c in retrieved
             )
-            prompt_payload = {
-                "model": os.getenv("LLM_MODEL", "gpt-4o-mini"),
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are a strict technical maintenance assistant for GE heavy-duty gas turbines. "
-                            "Answer questions EXCLUSIVELY using the provided context passages from GE GER-3620 Rev P. "
-                            "Never extrapolate, speculate, or draw on external knowledge. "
-                            "If the context passages do not contain direct factual support to answer the question, "
-                            "reply with exactly 'Not found' and nothing else."
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": f"Context passages:\n{context_text}\n\nQuestion: {cleaned_query}",
-                    },
-                ],
-                "temperature": 0.0,
-            }
-            req = urllib.request.Request(
-                "https://api.openai.com/v1/chat/completions",
-                data=json.dumps(prompt_payload).encode("utf-8"),
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {openai_api_key}",
-                },
+            system_prompt = (
+                "You are an expert technical maintenance assistant for GE heavy-duty gas turbines. "
+                "Answer the user's question EXCLUSIVELY and CONCISELY using the provided context passages from GE GER-3620 Rev P.\n"
+                "STRICT GROUNDING RULES:\n"
+                "1. Answer strictly and only from the supplied context passages. Never extrapolate or bring in external knowledge.\n"
+                "2. If the passages do not contain direct factual evidence to answer the question, return exactly 'Not found' and nothing else.\n"
+                "3. Distinguish general recommended inspection intervals from model-specific or operating-condition-dependent recommendations. Do not invent a universal interval when the document gives conditional guidance.\n"
+                "4. Be concise, authoritative, and technically accurate."
             )
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                result = json.loads(resp.read().decode("utf-8"))
-                llm_answer = result["choices"][0]["message"]["content"].strip()
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(
+                    content=f"Context Passages from GE GER-3620 Rev P:\n{context_text}\n\nQuestion: {cleaned_query}"
+                ),
+            ]
+            response = llm.invoke(messages)
+            llm_text = response.content.strip() if hasattr(response, "content") else str(response).strip()
 
-            if llm_answer.lower() == "not found" or "not found" in llm_answer.lower() and len(llm_answer) < 20:
+            # If Gemini determines the evidence is insufficient, return 'Not found'
+            if llm_text.lower() == "not found" or ("not found" in llm_text.lower() and len(llm_text) < 30):
                 return RAGResponse(
                     answer="Not found",
                     is_supported=False,
                     retrieved_chunks=chunks_dict_list,
                 )
 
-            # Use LLM answer with best chunk citation
+            # Successfully generated grounded answer with citations
             return RAGResponse(
-                answer=llm_answer,
+                answer=llm_text,
                 is_supported=True,
                 source=best_chunk.source,
                 page=best_chunk.page,
@@ -743,10 +765,10 @@ def answer_question(
                 retrieved_chunks=chunks_dict_list,
             )
         except Exception:
-            # Fallback to extractive answerer on LLM failure
+            # On any Gemini API or network failure, cleanly fall back to local extractive generation
             pass
 
-    # Extractive answer generation (default offline mode)
+    # Extractive answer generation (default offline mode or fallback)
     answer_text, primary_chunk, excerpt = generate_extractive_answer(cleaned_query, retrieved)
 
     return RAGResponse(

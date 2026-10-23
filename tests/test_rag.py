@@ -194,3 +194,101 @@ def test_empty_query(vectorstore_fixture):
 
     assert res.is_supported is False
     assert res.answer == "Not found"
+
+
+def test_gemini_integration_mock_grounded_answer(vectorstore_fixture):
+    """Verify that Gemini generates answers with citations when evidence is supported."""
+    from unittest.mock import MagicMock
+    from langchain_core.messages import AIMessage
+
+    vs, _ = vectorstore_fixture
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = AIMessage(
+        content="The three primary inspection types are Combustion, Hot Gas Path, and Major inspections."
+    )
+
+    res = answer_question(
+        "What are the three main types of inspection?",
+        vs,
+        gemini_llm=mock_llm,
+        use_gemini=True,
+    )
+
+    assert res.is_supported is True
+    assert "Combustion, Hot Gas Path, and Major" in res.answer
+    assert res.source == DEFAULT_PDF_PATH.name
+    assert res.page is not None
+    assert res.excerpt is not None
+    assert mock_llm.invoke.called
+
+
+def test_gemini_never_called_on_unsupported_evidence(vectorstore_fixture):
+    """Critical: verify Gemini is NEVER invoked if evidence validation fails."""
+    from unittest.mock import MagicMock
+
+    vs, _ = vectorstore_fixture
+    mock_llm = MagicMock()
+
+    # Question 3: Purchase price (unsupported)
+    res_q3 = answer_question(
+        "What is the purchase price of this gas turbine?",
+        vs,
+        gemini_llm=mock_llm,
+        use_gemini=True,
+    )
+    assert res_q3.is_supported is False
+    assert res_q3.answer == "Not found"
+    assert not mock_llm.invoke.called, "Gemini must not be called when evidence check fails!"
+
+    # Question 4: Titanium melting point (unsupported)
+    res_q4 = answer_question(
+        "What is the melting point of titanium?",
+        vs,
+        gemini_llm=mock_llm,
+        use_gemini=True,
+    )
+    assert res_q4.is_supported is False
+    assert res_q4.answer == "Not found"
+    assert not mock_llm.invoke.called, "Gemini must not be called when evidence check fails!"
+
+
+def test_gemini_not_found_handling(vectorstore_fixture):
+    """Verify that if Gemini returns 'Not found', response is marked unsupported."""
+    from unittest.mock import MagicMock
+    from langchain_core.messages import AIMessage
+
+    vs, _ = vectorstore_fixture
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = AIMessage(content="Not found")
+
+    res = answer_question(
+        "What are the three main types of inspection?",
+        vs,
+        gemini_llm=mock_llm,
+        use_gemini=True,
+    )
+
+    assert res.is_supported is False
+    assert res.answer == "Not found"
+
+
+def test_gemini_fallback_to_extractive_on_exception(vectorstore_fixture):
+    """Verify clean fallback to local extractive answerer if Gemini API fails."""
+    from unittest.mock import MagicMock
+
+    vs, _ = vectorstore_fixture
+    mock_llm = MagicMock()
+    mock_llm.invoke.side_effect = RuntimeError("Gemini API connection error")
+
+    res = answer_question(
+        "What are the three main types of inspection?",
+        vs,
+        gemini_llm=mock_llm,
+        use_gemini=True,
+    )
+
+    # Should fall back to extractive generator seamlessly
+    assert res.is_supported is True
+    assert "Combustion Inspection" in res.answer
+    assert res.source == DEFAULT_PDF_PATH.name
+    assert res.page is not None

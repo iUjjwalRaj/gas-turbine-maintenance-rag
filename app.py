@@ -17,8 +17,10 @@ from config import (
     CHROMA_PERSIST_DIR,
     DEFAULT_PDF_FILENAME,
     DEFAULT_PDF_PATH,
+    GEMINI_API_KEY,
+    GEMINI_MODEL,
     PDF_PATH,
-    USE_LLM,
+    USE_GEMINI,
 )
 from rag_pipeline import (
     RAGResponse,
@@ -301,12 +303,20 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("### ⚙️ Engine Mode")
+    has_gemini = bool(GEMINI_API_KEY and USE_GEMINI)
+    engine_badge = (
+        f"<span class='badge badge-success'>Gemini Flash ({GEMINI_MODEL})</span>"
+        if has_gemini
+        else "<span class='badge badge-neutral'>Local Extractive (Offline Fallback)</span>"
+    )
     st.markdown(
-        """
-        - **Pipeline:** Extractive RAG (Zero API Key, Local Embeddings)
-        - **Vector DB:** Persistent ChromaDB
-        - **Grounding Rule:** Answers strictly derived from retrieved text; returns **`Not found`** on unsupported queries.
-        """
+        f"""
+        - **Generator:** {engine_badge}
+        - **Retrieval:** Local sentence-transformers (`all-MiniLM-L6-v2`)
+        - **Vector DB:** Persistent ChromaDB (`chroma_db/`)
+        - **Grounding Rule:** Strict evidence gating; returns **`Not found`** on unsupported queries.
+        """,
+        unsafe_allow_html=True,
     )
 
 

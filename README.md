@@ -2,11 +2,14 @@
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%20%7C%203.12-blue.svg)](https://www.python.org/)
 [![LangChain](https://img.shields.io/badge/Framework-LangChain-green.svg)](https://www.langchain.com/)
+[![Gemini API](https://img.shields.io/badge/LLM-Gemini%20Flash-orange.svg)](https://ai.google.dev/)
 [![ChromaDB](https://img.shields.io/badge/VectorDB-ChromaDB-purple.svg)](https://www.trychroma.com/)
 [![Streamlit](https://img.shields.io/badge/UI-Streamlit-red.svg)](https://streamlit.io/)
-[![Tests](https://img.shields.io/badge/Tests-12%2F12%20Passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-16%2F16%20Passing-brightgreen.svg)](tests/)
 
-A complete, production-grade Retrieval-Augmented Generation (RAG) assistant designed for gas turbine operational and maintenance decision support. The system indexes and queries official GE Vernova technical documentation (**GE GER-3620 Rev P: Heavy-Duty Gas Turbine Operating and Maintenance Considerations**), citing exact source document locations (physical PDF page, printed page number, and section headings) and strictly returning **`Not found`** whenever an answer cannot be proven from the text.
+A complete, production-grade Retrieval-Augmented Generation (RAG) assistant designed for gas turbine operational and maintenance decision support. The system indexes and queries official GE Vernova technical documentation (**GE GER-3620 Rev P: Heavy-Duty Gas Turbine Operating and Maintenance Considerations**), utilizing **Google Gemini Flash** via `langchain-google-genai` for grounded synthesis with an automatic offline extractive fallback.
+
+The system cites exact source document locations (physical PDF page, printed page number, and section headings) and strictly returns **`Not found`** whenever an answer cannot be proven from the text.
 
 ---
 
@@ -15,11 +18,12 @@ A complete, production-grade Retrieval-Augmented Generation (RAG) assistant desi
 In heavy-duty gas turbine fleet operations, maintenance decisions require strict adherence to manufacturer specifications. Generative hallucinations or external assumptions about inspection intervals, pricing, or material properties can lead to catastrophic hardware failure or erroneous capital commitments.
 
 ### Core Objectives
-1. **Zero Hallucination Guarantee:** Use document evidence as the sole permitted source of truth.
-2. **Strict Evidence Validation:** If evidence is missing, ambiguous, contradictory, or out-of-domain, return exactly `Not found`.
+1. **Zero Hallucination Guarantee:** Use retrieved document passages as the sole permitted source of factual truth.
+2. **Strict Evidence Validation:** If evidence is missing, ambiguous, contradictory, or out-of-domain, return exactly `Not found`. Gemini is **never** invoked if the evidence check fails.
 3. **Traceable Citations:** Every supported answer provides the source filename, physical PDF page number, printed page number, section title, and an exact verbatim excerpt.
-4. **Local & Cost-Free Architecture:** Built with local sentence transformers (`all-MiniLM-L6-v2`) and persistent ChromaDB—no paid API keys required.
-5. **Persistent Vector Caching:** Automatically caches embeddings in `chroma_db/` using SHA-256 fingerprinting to eliminate redundant embedding on application restarts.
+4. **Google Gemini Flash Integration:** Employs Google's latest high-speed Gemini Flash model (`gemini-2.5-flash`) via `langchain-google-genai` for concise, grounded answers.
+5. **Reliable Local Fallback:** Retains local embeddings (`all-MiniLM-L6-v2`), persistent ChromaDB, and an extractive answer generator if the Gemini API key is absent or network fails.
+6. **Persistent Vector Caching:** Automatically caches embeddings in `chroma_db/` using SHA-256 fingerprinting to eliminate redundant re-embedding across application runs.
 
 ---
 
@@ -28,13 +32,14 @@ In heavy-duty gas turbine fleet operations, maintenance decisions require strict
 | Layer | Component | Version / Model | Role |
 | :--- | :--- | :--- | :--- |
 | **Language** | Python | `3.12.14` | Execution runtime |
+| **Generative LLM** | Google Gemini Flash | `gemini-2.5-flash` via `langchain-google-genai` | Grounded concise answer synthesis |
 | **Document Processing** | PyPDF | `>=4.0.0` | Text extraction, page identification, font parsing |
 | **Chunking** | LangChain Text Splitters | `>=0.0.1` | Recursive character text splitting (~800 chars, 120 overlap) |
 | **Embeddings** | Sentence-Transformers | `all-MiniLM-L6-v2` | 384-dimensional dense local embeddings (offline) |
 | **Vector Database** | ChromaDB / LangChain-Chroma | `>=0.4.22` | Local persistent vector storage with cosine distance |
 | **Orchestration** | LangChain Core | `>=0.1.20` | Document schema and retrieval pipeline |
 | **Web Interface** | Streamlit | `>=1.31.0` | Industrial engineering web dashboard |
-| **Testing** | PyTest | `>=8.0.0` | Automated test suite (12 test cases) |
+| **Testing** | PyTest | `>=8.0.0` | Automated test suite (16 comprehensive tests) |
 
 ---
 
@@ -53,12 +58,16 @@ flowchart TD
     
     H --> I{"Evidence Validation<br/>(Distance & Semantic Grounding)"}
     
-    I -- "Unsupported / Missing / Irrelevant" --> J["Return exactly: 'Not found'"]
-    I -- "Supported by Evidence" --> K["Extractive / Grounded Generation"]
+    I -- "Unsupported / Missing / Irrelevant" --> J["Return exactly: 'Not found'<br/>(Gemini bypassed)"]
     
-    K --> L["Format Citation & Excerpt<br/>(PDF Page, Printed Page, Section)"]
-    L --> M["Streamlit UI Display<br/>(Answer Panel + Citations + Debug Panel)"]
-    J --> M
+    I -- "Supported by Evidence" --> K{"Gemini API Configured?"}
+    K -- "Yes (GEMINI_API_KEY present)" --> L["Google Gemini Flash<br/>(Grounded Prompt)"]
+    K -- "No / API Error" --> M["Local Extractive Answerer<br/>(Verbatim Extraction)"]
+    
+    L --> N["Format Citation & Excerpt<br/>(PDF Page, Printed Page, Section)"]
+    M --> N
+    N --> O["Streamlit UI Display<br/>(Answer Panel + Citations + Debug Panel)"]
+    J --> O
 ```
 
 ### Pipeline Details
@@ -66,17 +75,18 @@ flowchart TD
    - Text is parsed page-by-page from `data/GER-3620-P.pdf`.
    - Distinguishes **Physical PDF Page Number** (e.g. Page 25 of 60) from **Printed Page Number** (e.g. Page 21) located in headers/TOC.
    - Extracts section titles according to the official Table of Contents (e.g. *Maintenance Inspections*, *Combustion Inspection Interval*).
-2. **Chunking & Indexing:**
+2. **Chunking & Persistent Indexing:**
    - Passages are chunked into 800 characters with 120 characters overlap.
    - Embeddings are generated locally using `sentence-transformers/all-MiniLM-L6-v2`.
    - Stored in persistent ChromaDB (`chroma_db/`).
-   - SHA-256 fingerprinting verifies file integrity; if the document is unchanged, the vector index is loaded in milliseconds without re-embedding.
-3. **Retrieval & Evidence Validation:**
+   - SHA-256 fingerprinting verifies file integrity; if the document is unchanged, the vector index loads in milliseconds without re-embedding.
+3. **Evidence Validation & Gating:**
    - Retrieves top passages using cosine distance.
    - Rejects queries exceeding the relevance threshold (`MAX_COSINE_DISTANCE = 1.05`) or lacking factual grounding.
-   - Explicit verification catches out-of-scope queries (such as capital cost or chemical properties) and triggers `Not found`.
+   - Explicit negative-domain verification catches out-of-scope queries (such as capital cost or chemical properties) and triggers `Not found`.
+   - **Crucial Rule:** Gemini is **never** invoked if the evidence check fails. Gemini cannot override a failed evidence check or guess from general knowledge.
 4. **Answer Generation & Citations:**
-   - Extracts factual answers directly from the verified passages.
+   - When supported, passes only the retrieved passages to Gemini Flash with strict grounding instructions.
    - Displays physical PDF page, printed page, section name, and exact supporting excerpt.
 
 ---
@@ -85,7 +95,7 @@ flowchart TD
 
 ### Prerequisites
 - macOS, Linux, or Windows with **Python 3.11** or **Python 3.12**.
-- Git and Internet connection for the initial package installation and model weights download.
+- Git and Internet connection.
 
 ### Step-by-Step Installation
 
@@ -105,28 +115,37 @@ flowchart TD
    pip install -r requirements.txt
    ```
 
-4. **Verify environment configuration (Optional):**
+4. **Configure Gemini API Key:**
+   Copy `.env.example` to `.env`:
    ```bash
    cp .env.example .env
    ```
+   Add your Gemini API key inside `.env`:
+   ```ini
+   GEMINI_API_KEY=your_actual_gemini_api_key_here
+   GEMINI_MODEL=gemini-2.5-flash
+   USE_GEMINI=true
+   ```
+   > [!NOTE]
+   > `.env` is listed in `.gitignore` to prevent committing secrets to version control. If no API key is provided, the application continues to run in offline local extractive RAG mode.
 
-5. **Source Document:**
-   The official PDF `GER-3620-P.pdf` is located in `data/GER-3620-P.pdf`.
-   If missing, the application automatically downloads it on first launch, or allows uploading via the web interface.
+5. **Model Identifier Note (Gemini 3.5 Flash vs 2.5 Flash):**
+   - In Google's official Gemini API and Google AI Studio documentation, the active Flash production series models use the identifiers **`gemini-2.5-flash`** (current production recommendation) and **`gemini-1.5-flash`**.
+   - If your professor specified "Gemini 3.5 Flash", set `GEMINI_MODEL=gemini-3.5-flash` in `.env`. The application defaults to `gemini-2.5-flash` (or any valid alias accepted by `langchain-google-genai`).
 
 ---
 
 ## 5. Execution Commands
 
 ### Launch the Streamlit Web Application
-Run the following single command from the project root:
+Run the single command from the project root:
 ```bash
 streamlit run app.py
 ```
 Open your browser to: **`http://localhost:8501`**
 
 ### Run Automated Test Suite
-Run the 12 comprehensive test cases via pytest:
+Run all 16 test cases via pytest (unit tests mock Gemini calls to avoid consuming API quota):
 ```bash
 pytest tests/ -v
 ```
@@ -164,27 +183,31 @@ All five required exam questions were evaluated against the indexed GE document 
 
 ## 7. Automated Test Results
 
-The test suite in `tests/test_rag.py` executes 12 automated unit and integration tests using `pytest`:
+The test suite in `tests/test_rag.py` executes 16 automated unit and integration tests using `pytest`:
 
 ```text
 ============================= test session starts ==============================
 platform darwin -- Python 3.12.14, pytest-9.1.1, pluggy-1.7.0
 rootdir: /Users/ujjwalraj/Desktop/GEN AI EXAM
 
-tests/test_rag.py::test_pdf_validity_and_extraction PASSED               [  8%]
-tests/test_rag.py::test_chunk_creation PASSED                            [ 16%]
-tests/test_rag.py::test_persistence_and_reuse PASSED                     [ 25%]
-tests/test_rag.py::test_missing_or_invalid_pdf_error PASSED              [ 33%]
-tests/test_rag.py::test_retrieval_and_similarity PASSED                  [ 41%]
-tests/test_rag.py::test_question_1_three_inspection_types PASSED         [ 50%]
-tests/test_rag.py::test_question_2_maintenance_factor_of_two PASSED      [ 58%]
-tests/test_rag.py::test_question_3_purchase_price_not_found PASSED       [ 66%]
-tests/test_rag.py::test_question_4_titanium_melting_point_not_found PASSED [ 75%]
-tests/test_rag.py::test_question_5_combustion_inspection_interval PASSED [ 83%]
-tests/test_rag.py::test_unsupported_out_of_scope_query PASSED            [ 91%]
-tests/test_rag.py::test_empty_query PASSED                               [100%]
+tests/test_rag.py::test_pdf_validity_and_extraction PASSED               [  6%]
+tests/test_rag.py::test_chunk_creation PASSED                            [ 12%]
+tests/test_rag.py::test_persistence_and_reuse PASSED                     [ 18%]
+tests/test_rag.py::test_missing_or_invalid_pdf_error PASSED              [ 25%]
+tests/test_rag.py::test_retrieval_and_similarity PASSED                  [ 31%]
+tests/test_rag.py::test_question_1_three_inspection_types PASSED         [ 37%]
+tests/test_rag.py::test_question_2_maintenance_factor_of_two PASSED      [ 43%]
+tests/test_rag.py::test_question_3_purchase_price_not_found PASSED       [ 50%]
+tests/test_rag.py::test_question_4_titanium_melting_point_not_found PASSED [ 56%]
+tests/test_rag.py::test_question_5_combustion_inspection_interval PASSED [ 62%]
+tests/test_rag.py::test_unsupported_out_of_scope_query PASSED            [ 68%]
+tests/test_rag.py::test_empty_query PASSED                               [ 75%]
+tests/test_rag.py::test_gemini_integration_mock_grounded_answer PASSED   [ 81%]
+tests/test_rag.py::test_gemini_never_called_on_unsupported_evidence PASSED [ 87%]
+tests/test_rag.py::test_gemini_not_found_handling PASSED                 [ 93%]
+tests/test_rag.py::test_gemini_fallback_to_extractive_on_exception PASSED [100%]
 
-============================= 12 passed in 20.96s ==============================
+============================= 16 passed in 25.58s ==============================
 ```
 
 ---
@@ -194,11 +217,11 @@ tests/test_rag.py::test_empty_query PASSED                               [100%]
 ### Guardrails Implemented
 1. **Strict Distance Thresholding:** Queries whose best retrieved passage has a cosine distance $> 1.05$ are automatically rejected as irrelevant.
 2. **Negative Domain Matching:** Topics outside technical maintenance (such as procurement pricing or metallurgy constants) are verified against explicit document terms. If unsupported, the system returns `Not found`.
-3. **Transparent Extractive Answerer:** Default answering logic extracts and synthesizes verbatim verified sentences rather than free-form speculative completions.
+3. **Evidence Gating of Gemini:** Gemini is **only** called when passages pass evidence verification. If evidence is missing, Gemini is bypassed entirely to prevent hallucination.
 4. **Distinction of Printed vs Physical Pages:** Both page numbers are extracted and presented so engineers can immediately cross-reference physical paper copies or digital PDF readers.
 
 ### Known Limitations
-- The system focuses exclusively on GE GER-3620 Rev P. Other gas turbine models (such as aeroderivative LM2500/LM6000 or specific Alstom silo variants) require their respective technical documentation.
+- The system focuses exclusively on GE GER-3620 Rev P. Questions relating to other turbine families (e.g., aeroderivative LM2500) will appropriately return `Not found`.
 - Scanned raster tables inside PDFs without OCR text cannot be indexed unless accompanied by textual character streams.
 
 ---
@@ -207,7 +230,7 @@ tests/test_rag.py::test_empty_query PASSED                               [100%]
 
 When launched via `streamlit run app.py`, the user interface displays:
 - **Header:** Dark navy industrial banner with system description.
-- **Sidebar:** Document indexing status, filename (`GER-3620-P.pdf`), 59 pages, 317 chunks, cache status (`Reused Index`), and upload controls.
+- **Sidebar:** Document indexing status, filename (`GER-3620-P.pdf`), 59 pages, 317 chunks, cache status (`Reused Index`), active engine mode badge (`Gemini Flash` or `Offline Fallback`), and upload controls.
 - **Sample Questions Column:** 5 clickable buttons corresponding to the exam questions.
 - **Answer Panel:** Clean white card displaying the answer, or a crimson alert card displaying `Not found` for unsupported queries.
 - **Citation Panel:** Formatted badges displaying physical PDF page, printed page number, section heading, and supporting excerpt.
@@ -215,26 +238,26 @@ When launched via `streamlit run app.py`, the user interface displays:
 
 ### Screenshot Checklist
 To capture screenshots during demonstration:
-1. `screenshot_app_home.png` — Default landing page showing header, sidebar status, and empty query state.
+1. `screenshot_app_home.png` — Default landing page showing header, sidebar status with Gemini Flash badge, and empty query state.
 2. `screenshot_q1_answer.png` — Answer to Question 1 showing Combustion, Hot Gas Path, and Major inspections with Page 25 citation.
 3. `screenshot_q3_not_found.png` — Answer to Question 3 showing the red `Not found` panel for turbine purchase price.
 4. `screenshot_q5_interval.png` — Answer to Question 5 showing model-specific combustion inspection intervals with debug panel expanded.
 
 ---
 
-## 10. GitHub Submission Instructions
+## 10. Git & GitHub Submission Instructions
 
 To push this codebase to a new GitHub repository:
 
 ```bash
-# 1. Initialize git (if not already initialized)
-git init
+# 1. Check git status
+git status
 
-# 2. Add all project files
+# 2. Add modified files
 git add .
 
-# 3. Create initial commit
-git commit -m "feat: complete Gas Turbine Maintenance Assistant RAG application for Project 3"
+# 3. Commit changes
+git commit -m "feat: integrate Gemini Flash API via langchain-google-genai with offline fallback"
 
 # 4. Set main branch
 git branch -M main
