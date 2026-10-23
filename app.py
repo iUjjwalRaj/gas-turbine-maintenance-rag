@@ -669,7 +669,7 @@ st.markdown(
 
     /* Scrollable Conversation Container inside Panel */
     .st-key-chat_conversation_scroll {
-        max-height: calc(100vh - 350px) !important;
+        max-height: calc(100vh - 260px) !important;
         overflow-y: auto !important;
         overflow-x: hidden !important;
         padding-right: 4px !important;
@@ -958,39 +958,35 @@ with st.container(key="floating_chat_panel"):
                     else "N/A"
                 )
                 with st.expander("📌 Supporting Source Citation", expanded=True):
-                    st.markdown(
-                        f"""
-                        <div class="citation-card">
-                            <div class="citation-grid">
-                                <div class="citation-cell citation-cell-full">
-                                    <span class="citation-label">DOCUMENT</span>
-                                    <span class="citation-val-doc">{html.escape(str(resp.source))}</span>
-                                </div>
-                                <div class="citation-cell">
-                                    <span class="citation-label">PHYSICAL PDF</span>
-                                    <span class="citation-val-badge">Page {resp.page} of 60</span>
-                                </div>
-                                <div class="citation-cell">
-                                    <span class="citation-label">PRINTED PAGE</span>
-                                    <span class="citation-val-badge">{html.escape(printed_disp)}</span>
-                                </div>
-                            </div>
-                            
-                            <div class="citation-cell">
-                                <span class="citation-label">SECTION HEADING</span>
-                                <span class="citation-val-section">§ {html.escape(str(resp.section))}</span>
-                            </div>
-                            
-                            <div class="citation-excerpt-box">
-                                <span class="citation-label">VERBATIM SUPPORTING EXCERPT</span>
-                                <blockquote class="citation-excerpt-text">
-                                    <span class="citation-quote-glyph">“</span>{html.escape(str(resp.excerpt))}<span class="citation-quote-glyph">”</span>
-                                </blockquote>
-                            </div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
+                    citation_html = (
+                        f'<div class="citation-card">'
+                        f'<div class="citation-grid">'
+                        f'<div class="citation-cell citation-cell-full">'
+                        f'<span class="citation-label">DOCUMENT</span>'
+                        f'<span class="citation-val-doc">{html.escape(str(resp.source))}</span>'
+                        f'</div>'
+                        f'<div class="citation-cell">'
+                        f'<span class="citation-label">PHYSICAL PDF</span>'
+                        f'<span class="citation-val-badge">Page {resp.page} of 60</span>'
+                        f'</div>'
+                        f'<div class="citation-cell">'
+                        f'<span class="citation-label">PRINTED PAGE</span>'
+                        f'<span class="citation-val-badge">{html.escape(printed_disp)}</span>'
+                        f'</div>'
+                        f'</div>'
+                        f'<div class="citation-cell">'
+                        f'<span class="citation-label">SECTION HEADING</span>'
+                        f'<span class="citation-val-section">§ {html.escape(str(resp.section))}</span>'
+                        f'</div>'
+                        f'<div class="citation-excerpt-box">'
+                        f'<span class="citation-label">VERBATIM SUPPORTING EXCERPT</span>'
+                        f'<blockquote class="citation-excerpt-text">'
+                        f'<span class="citation-quote-glyph">“</span>{html.escape(str(resp.excerpt))}<span class="citation-quote-glyph">”</span>'
+                        f'</blockquote>'
+                        f'</div>'
+                        f'</div>'
                     )
+                    st.markdown(citation_html, unsafe_allow_html=True)
 
                 # Debug retrieved chunks (collapsible)
                 if resp.retrieved_chunks:
