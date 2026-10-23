@@ -7,7 +7,9 @@ GE GER-3620 Rev P (Heavy-Duty Gas Turbine Operating and Maintenance Consideratio
 
 from __future__ import annotations
 
+import html
 import os
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -50,6 +52,64 @@ SAMPLE_QUESTIONS = [
     "What is the melting point of titanium?",
     "What is the recommended combustion-inspection interval in hours?",
 ]
+
+
+def format_answer_html(raw_answer: str) -> str:
+    """Format RAG answer text into clear structured typography with lists and paragraphs.
+
+    Strictly preserves all numbers, facts, and verbatim wording without truncation.
+    """
+    if not raw_answer:
+        return ""
+    text = raw_answer.strip()
+    if text == "Not found":
+        return text
+
+    # Pattern 1: Embedded numbered list like (1) Item A, (2) Item B, and (3) Item C
+    paren_pattern = r"(?:\s*\((\d+)\)\s*)(.+?)(?=(?:\s*\(\d+\)|$))"
+    intro_match = re.match(r"^(.*?)(?:\:\s*\(1\)|\s+\(1\))", text, flags=re.DOTALL)
+    if intro_match and "(2)" in text:
+        intro = intro_match.group(1).strip()
+        if not intro.endswith(":"):
+            intro += ":"
+        items = re.findall(paren_pattern, text[len(intro_match.group(1)):], flags=re.DOTALL)
+        if items:
+            out = f'<p class="answer-lead">{html.escape(intro)}</p><ul class="answer-list">'
+            for num, item in items:
+                clean_item = item.strip()
+                clean_item = re.sub(r"^(?:and|or)\s+", "", clean_item, flags=re.IGNORECASE)
+                clean_item = re.sub(r"(?:,\s*(?:and|or)|[,;])\s*$", "", clean_item, flags=re.IGNORECASE)
+                out += (
+                    f'<li><span class="list-badge">{html.escape(num)}</span>'
+                    f'<span class="list-text">{html.escape(clean_item)}</span></li>'
+                )
+            out += "</ul>"
+            return out
+
+    # Pattern 2: Multi-line list items (e.g., 1. Item or - Item)
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
+    if len(lines) > 1 and all(re.match(r"^(?:[-*•]|\d+[\.\)])\s+", l) for l in lines[1:]):
+        intro = lines[0]
+        out = f'<p class="answer-lead">{html.escape(intro)}</p><ul class="answer-list">'
+        for line in lines[1:]:
+            m = re.match(r"^(?:[-*•]|\s*(\d+)[\.\)])\s+(.*)", line)
+            num = m.group(1) if (m and m.group(1)) else "•"
+            content = m.group(2) if m else line
+            out += (
+                f'<li><span class="list-badge">{html.escape(num)}</span>'
+                f'<span class="list-text">{html.escape(content)}</span></li>'
+            )
+        out += "</ul>"
+        return out
+
+    # Pattern 3: Standard prose - split on double newline or single newline
+    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+    if not paragraphs:
+        paragraphs = [text]
+    out_paras = []
+    for p in paragraphs:
+        out_paras.append(f'<p class="answer-paragraph">{html.escape(p)}</p>')
+    return "".join(out_paras)
 
 
 @st.cache_resource(show_spinner="Initializing Vector Database...")
@@ -196,7 +256,10 @@ st.markdown(
         width: 330px !important;
         pointer-events: auto !important;
     }
+    .st-key-top_status_panel [data-testid="stExpander"] summary,
+    .st-key-top_status_panel .stExpander summary,
     .st-key-top_status_panel .streamlit-expanderHeader,
+    div:has(> #top-status-anchor) [data-testid="stExpander"] summary,
     div:has(> #top-status-anchor) .streamlit-expanderHeader {
         background: rgba(16, 22, 30, 0.82) !important;
         backdrop-filter: blur(16px) !important;
@@ -209,7 +272,10 @@ st.markdown(
         font-weight: 600 !important;
         box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
     }
+    .st-key-top_status_panel [data-testid="stExpander"] [data-testid="stExpanderDetails"],
+    .st-key-top_status_panel .stExpander [data-testid="stExpanderDetails"],
     .st-key-top_status_panel .streamlit-expanderContent,
+    div:has(> #top-status-anchor) [data-testid="stExpander"] [data-testid="stExpanderDetails"],
     div:has(> #top-status-anchor) .streamlit-expanderContent {
         background: rgba(14, 18, 24, 0.94) !important;
         backdrop-filter: blur(20px) !important;
@@ -221,23 +287,23 @@ st.markdown(
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6) !important;
     }
 
-    /* 5. Floating Glassmorphism Chat Panel (Lower Left) */
+    /* 5. Floating Glassmorphism Chat Panel (Left Side Viewport) */
     .st-key-floating_chat_panel,
     div:has(> #floating-chat-anchor) {
         position: fixed !important;
-        bottom: 24px !important;
+        top: 76px !important;
         left: 24px !important;
-        width: 410px !important;
-        max-width: calc(100vw - 48px) !important;
-        max-height: calc(100vh - 84px) !important;
+        width: 440px !important;
+        max-width: min(440px, 92vw) !important;
+        max-height: calc(100vh - 100px) !important;
         z-index: 100 !important;
-        background: rgba(13, 17, 23, 0.82) !important;
-        backdrop-filter: blur(18px) !important;
-        -webkit-backdrop-filter: blur(18px) !important;
-        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        background: rgba(13, 17, 23, 0.86) !important;
+        backdrop-filter: blur(20px) !important;
+        -webkit-backdrop-filter: blur(20px) !important;
+        border: 1px solid rgba(255, 255, 255, 0.13) !important;
         border-radius: 18px !important;
-        padding: 18px 20px !important;
-        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 0 24px rgba(58, 160, 255, 0.12) !important;
+        padding: 20px 22px 24px 22px !important;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.70), 0 0 24px rgba(58, 160, 255, 0.12) !important;
         overflow-y: auto !important;
         overflow-x: hidden !important;
         pointer-events: auto !important;
@@ -279,33 +345,125 @@ st.markdown(
         box-shadow: 0 0 8px #10b981;
     }
 
-    /* User Query Display */
+    /* User Query Display Card */
     .user-query-card {
-        background: rgba(30, 41, 59, 0.45);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 10px;
-        padding: 10px 14px;
-        margin-bottom: 12px;
-        font-size: 0.88rem;
-        color: #94a3b8;
+        background: rgba(22, 30, 44, 0.75) !important;
+        border: 1px solid rgba(56, 189, 248, 0.25) !important;
+        border-left: 3px solid #38bdf8 !important;
+        border-radius: 10px !important;
+        padding: 10px 14px !important;
+        margin-bottom: 12px !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25) !important;
     }
-    .user-query-card b {
-        color: #38bdf8;
-        font-weight: 600;
+    .user-query-label {
+        font-size: 0.68rem !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.08em !important;
+        text-transform: uppercase !important;
+        color: #38bdf8 !important;
+        margin-bottom: 4px !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 6px !important;
+    }
+    .user-query-text {
+        font-size: 0.90rem !important;
+        font-weight: 600 !important;
+        color: #F1F5F9 !important;
+        line-height: 1.45 !important;
     }
 
     /* Supported Answer Card */
     .answer-card {
-        background: rgba(18, 24, 34, 0.75);
-        border: 1px solid rgba(255, 255, 255, 0.10);
-        border-left: 3px solid #3AA0FF;
-        border-radius: 10px;
-        padding: 14px 16px;
-        font-size: 0.92rem;
-        line-height: 1.55;
-        color: #F1F5F9;
-        margin-bottom: 12px;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+        background: rgba(15, 23, 36, 0.88) !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        border-left: 3px solid #3AA0FF !important;
+        border-radius: 12px !important;
+        padding: 16px 18px !important;
+        margin-bottom: 12px !important;
+        box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35) !important;
+    }
+    .answer-header {
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        margin-bottom: 10px !important;
+        padding-bottom: 6px !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.07) !important;
+    }
+    .answer-badge {
+        font-size: 0.70rem !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.07em !important;
+        text-transform: uppercase !important;
+        color: #38bdf8 !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 5px !important;
+    }
+    .answer-verified {
+        font-size: 0.68rem !important;
+        font-weight: 600 !important;
+        color: #34d399 !important;
+        background: rgba(16, 185, 129, 0.12) !important;
+        border: 1px solid rgba(52, 211, 153, 0.25) !important;
+        padding: 2px 7px !important;
+        border-radius: 12px !important;
+    }
+    .answer-body {
+        font-size: 0.93rem !important;
+        line-height: 1.65 !important;
+        color: #F8FAFC !important;
+        letter-spacing: 0.012em !important;
+    }
+    .answer-lead {
+        margin: 0 0 10px 0 !important;
+        font-weight: 500 !important;
+        color: #F8FAFC !important;
+    }
+    .answer-paragraph {
+        margin: 0 0 10px 0 !important;
+        color: #F8FAFC !important;
+    }
+    .answer-paragraph:last-child {
+        margin-bottom: 0 !important;
+    }
+    .answer-list {
+        list-style: none !important;
+        padding: 0 !important;
+        margin: 6px 0 10px 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 8px !important;
+    }
+    .answer-list li {
+        display: flex !important;
+        align-items: flex-start !important;
+        gap: 10px !important;
+        background: rgba(255, 255, 255, 0.03) !important;
+        border: 1px solid rgba(255, 255, 255, 0.06) !important;
+        border-radius: 8px !important;
+        padding: 8px 12px !important;
+    }
+    .list-badge {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        min-width: 20px !important;
+        height: 20px !important;
+        border-radius: 50% !important;
+        background: rgba(56, 189, 248, 0.18) !important;
+        color: #38bdf8 !important;
+        font-size: 0.72rem !important;
+        font-weight: 700 !important;
+        margin-top: 2px !important;
+        flex-shrink: 0 !important;
+        border: 1px solid rgba(56, 189, 248, 0.35) !important;
+    }
+    .list-text {
+        color: #F8FAFC !important;
+        font-size: 0.91rem !important;
+        line-height: 1.55 !important;
     }
 
     /* Strict Not-Found Warning Card */
@@ -331,24 +489,133 @@ st.markdown(
         line-height: 1.45;
     }
 
-    /* Citation Card Inside Expander */
-    .cite-block {
-        font-size: 0.82rem;
-        line-height: 1.5;
-        color: #cbd5e1;
+    /* Citation Hierarchy Card */
+    .citation-card {
+        background: rgba(14, 20, 30, 0.85) !important;
+        border: 1px solid rgba(255, 255, 255, 0.10) !important;
+        border-radius: 10px !important;
+        padding: 12px 14px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 9px !important;
     }
-    .cite-block strong {
-        color: #38bdf8;
+    .citation-grid {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: 8px !important;
     }
-    .cite-excerpt {
-        background: rgba(10, 14, 20, 0.6);
-        border-left: 2px solid #38bdf8;
-        border-radius: 4px;
-        padding: 8px 10px;
-        margin-top: 8px;
-        font-style: italic;
-        color: #94a3b8;
-        font-size: 0.80rem;
+    .citation-cell {
+        background: rgba(22, 30, 42, 0.65) !important;
+        border: 1px solid rgba(255, 255, 255, 0.06) !important;
+        border-radius: 7px !important;
+        padding: 7px 10px !important;
+    }
+    .citation-cell-full {
+        grid-column: 1 / -1 !important;
+    }
+    .citation-label {
+        display: block !important;
+        font-size: 0.66rem !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.08em !important;
+        text-transform: uppercase !important;
+        color: #64748b !important;
+        margin-bottom: 2px !important;
+    }
+    .citation-val-doc {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+        font-size: 0.80rem !important;
+        color: #38bdf8 !important;
+        font-weight: 600 !important;
+    }
+    .citation-val-badge {
+        display: inline-block !important;
+        background: rgba(56, 189, 248, 0.12) !important;
+        border: 1px solid rgba(56, 189, 248, 0.28) !important;
+        border-radius: 5px !important;
+        padding: 2px 7px !important;
+        font-size: 0.78rem !important;
+        font-weight: 600 !important;
+        color: #e2e8f0 !important;
+    }
+    .citation-val-section {
+        font-size: 0.82rem !important;
+        font-weight: 600 !important;
+        color: #f1f5f9 !important;
+    }
+    .citation-excerpt-box {
+        background: rgba(10, 14, 22, 0.75) !important;
+        border-left: 3px solid #38bdf8 !important;
+        border-radius: 6px !important;
+        padding: 10px 12px !important;
+    }
+    .citation-excerpt-text {
+        font-size: 0.82rem !important;
+        line-height: 1.6 !important;
+        color: #cbd5e1 !important;
+        font-style: italic !important;
+        margin: 0 !important;
+        max-height: 120px !important;
+        overflow-y: auto !important;
+        word-break: break-word !important;
+    }
+    .citation-quote-glyph {
+        color: #38bdf8 !important;
+        font-size: 1.1rem !important;
+        font-weight: 700 !important;
+        line-height: 1 !important;
+        margin-right: 4px !important;
+    }
+
+    /* Expander Overrides inside Floating Chat Panel */
+    .st-key-floating_chat_panel [data-testid="stExpander"],
+    .st-key-floating_chat_panel .stExpander,
+    .st-key-floating_chat_panel details {
+        border: none !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        margin-bottom: 6px !important;
+    }
+    .st-key-floating_chat_panel [data-testid="stExpander"] summary,
+    .st-key-floating_chat_panel .stExpander summary,
+    .st-key-floating_chat_panel .streamlit-expanderHeader {
+        background: rgba(20, 26, 38, 0.70) !important;
+        border: 1px solid rgba(255, 255, 255, 0.10) !important;
+        border-radius: 9px !important;
+        padding: 6px 12px !important;
+        font-size: 0.80rem !important;
+        font-weight: 600 !important;
+        color: #cbd5e1 !important;
+        transition: all 0.2s ease !important;
+    }
+    .st-key-floating_chat_panel [data-testid="stExpander"] summary:hover,
+    .st-key-floating_chat_panel .stExpander summary:hover {
+        background: rgba(28, 38, 54, 0.85) !important;
+        border-color: rgba(58, 160, 255, 0.35) !important;
+        color: #ffffff !important;
+    }
+    .st-key-floating_chat_panel [data-testid="stExpander"] [data-testid="stExpanderDetails"],
+    .st-key-floating_chat_panel .stExpander [data-testid="stExpanderDetails"],
+    .st-key-floating_chat_panel .streamlit-expanderContent {
+        background: transparent !important;
+        border: none !important;
+        padding: 4px 0 8px 0 !important;
+    }
+    details:not([open]) > *:not(summary) {
+        display: none !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        visibility: hidden !important;
+    }
+
+    /* Scrollable Conversation Container inside Panel */
+    .st-key-chat_conversation_scroll {
+        max-height: calc(100vh - 350px) !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        padding-right: 4px !important;
+        margin-bottom: 10px !important;
     }
 
     /* Hints and Footers */
@@ -425,10 +692,12 @@ st.markdown(
     @media (max-width: 768px) {
         .st-key-floating_chat_panel,
         div:has(> #floating-chat-anchor) {
+            top: auto !important;
             left: 12px !important;
             bottom: 12px !important;
             width: calc(100vw - 24px) !important;
-            max-height: 50vh !important;
+            max-width: calc(100vw - 24px) !important;
+            max-height: 65vh !important;
         }
         .st-key-top_status_panel,
         div:has(> #top-status-anchor) {
@@ -580,90 +849,121 @@ with st.container(key="floating_chat_panel"):
                         st.session_state.active_response = resp
                 st.rerun()
 
-    # Active Conversation & Answer Display Area
-    if st.session_state.active_response is not None:
-        resp: RAGResponse = st.session_state.active_response
+    # Active Conversation & Answer Display Area (Scrollable Container)
+    with st.container(key="chat_conversation_scroll"):
+        if st.session_state.active_response is not None:
+            resp: RAGResponse = st.session_state.active_response
 
-        # Show active query
-        if st.session_state.active_query_text:
-            st.markdown(
-                f"""
-                <div class="user-query-card">
-                    <b>Q:</b> {st.session_state.active_query_text}
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-        # Unsupported / Not found
-        if not resp.is_supported or resp.answer == "Not found":
-            st.markdown(
-                """
-                <div class="not-found-card">
-                    <div class="not-found-badge">⚠️ Not found</div>
-                    <div class="not-found-desc">
-                        The requested information is not supported by the document (GE GER-3620 Rev P).
-                        Strict evidence validation active: ungrounded answers and hallucinations are prevented.
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        else:
-            # Supported Answer
-            st.markdown(
-                f"""
-                <div class="answer-card">
-                    {resp.answer}
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            # Collapsible Source Citation
-            printed_disp = (
-                f"Page {resp.printed_page}"
-                if resp.printed_page and resp.printed_page != "Unavailable"
-                else "N/A"
-            )
-            with st.expander("📌 Supporting Source Citation", expanded=True):
+            # Show active query
+            if st.session_state.active_query_text:
                 st.markdown(
                     f"""
-                    <div class="cite-block">
-                        <div><strong>Document:</strong> {resp.source}</div>
-                        <div><strong>Physical PDF:</strong> Page {resp.page} of 60 | <strong>Printed Page:</strong> {printed_disp}</div>
-                        <div><strong>Section:</strong> {resp.section}</div>
-                        <div class="cite-excerpt">"{resp.excerpt}"</div>
+                    <div class="user-query-card">
+                        <div class="user-query-label">💬 Engineering Query</div>
+                        <div class="user-query-text">{html.escape(st.session_state.active_query_text)}</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
                 )
 
-            # Debug retrieved chunks (collapsible)
-            if resp.retrieved_chunks:
-                with st.expander("🔍 ChromaDB Retrieval Passages", expanded=False):
-                    for i, chunk in enumerate(resp.retrieved_chunks, 1):
-                        st.caption(
-                            f"**#{i}** P.{chunk['page']} (Score: `{chunk['score']}`): `{chunk['section']}`"
-                        )
-                        st.text_area(
-                            f"Passage {i}",
-                            chunk["content"],
-                            height=75,
-                            key=f"chunk_box_{i}",
-                            disabled=True,
-                        )
+            # Unsupported / Not found
+            if not resp.is_supported or resp.answer == "Not found":
+                st.markdown(
+                    """
+                    <div class="not-found-card">
+                        <div class="not-found-badge">⚠️ Not found</div>
+                        <div class="not-found-desc">
+                            The requested information is not supported by the document (GE GER-3620 Rev P).
+                            Strict evidence validation active: ungrounded answers and hallucinations are prevented.
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            else:
+                # Supported Answer with structured typography
+                formatted_answer = format_answer_html(resp.answer)
+                st.markdown(
+                    f"""
+                    <div class="answer-card">
+                        <div class="answer-header">
+                            <span class="answer-badge">⚙️ GROUNDED ANSWER</span>
+                            <span class="answer-verified">✓ GER-3620 Grounded</span>
+                        </div>
+                        <div class="answer-body">
+                            {formatted_answer}
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
-    else:
-        # Default empty state greeting
-        st.markdown(
-            """
-            <div style="background:rgba(20,26,36,0.5); border:1px dashed rgba(255,255,255,0.08); border-radius:10px; padding:12px; margin-bottom:12px; font-size:0.83rem; color:#94a3b8; text-align:center;">
-                💡 Ask any maintenance or operational question, or select an exam question from the menu above.
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+                # Collapsible Source Citation with clear 4-tier hierarchy
+                printed_disp = (
+                    f"Page {resp.printed_page}"
+                    if resp.printed_page and resp.printed_page != "Unavailable"
+                    else "N/A"
+                )
+                with st.expander("📌 Supporting Source Citation", expanded=True):
+                    st.markdown(
+                        f"""
+                        <div class="citation-card">
+                            <div class="citation-grid">
+                                <div class="citation-cell citation-cell-full">
+                                    <span class="citation-label">DOCUMENT</span>
+                                    <span class="citation-val-doc">{html.escape(str(resp.source))}</span>
+                                </div>
+                                <div class="citation-cell">
+                                    <span class="citation-label">PHYSICAL PDF</span>
+                                    <span class="citation-val-badge">Page {resp.page} of 60</span>
+                                </div>
+                                <div class="citation-cell">
+                                    <span class="citation-label">PRINTED PAGE</span>
+                                    <span class="citation-val-badge">{html.escape(printed_disp)}</span>
+                                </div>
+                            </div>
+                            
+                            <div class="citation-cell">
+                                <span class="citation-label">SECTION HEADING</span>
+                                <span class="citation-val-section">§ {html.escape(str(resp.section))}</span>
+                            </div>
+                            
+                            <div class="citation-excerpt-box">
+                                <span class="citation-label">VERBATIM SUPPORTING EXCERPT</span>
+                                <blockquote class="citation-excerpt-text">
+                                    <span class="citation-quote-glyph">“</span>{html.escape(str(resp.excerpt))}<span class="citation-quote-glyph">”</span>
+                                </blockquote>
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                # Debug retrieved chunks (collapsible)
+                if resp.retrieved_chunks:
+                    with st.expander("🔍 ChromaDB Retrieval Passages", expanded=False):
+                        for i, chunk in enumerate(resp.retrieved_chunks, 1):
+                            st.caption(
+                                f"**#{i}** P.{chunk['page']} (Score: `{chunk['score']}`): `{chunk['section']}`"
+                            )
+                            st.text_area(
+                                f"Passage {i}",
+                                chunk["content"],
+                                height=75,
+                                key=f"chunk_box_{i}",
+                                disabled=True,
+                            )
+
+        else:
+            # Default empty state greeting
+            st.markdown(
+                """
+                <div style="background:rgba(20,26,36,0.5); border:1px dashed rgba(255,255,255,0.08); border-radius:10px; padding:12px; margin-bottom:12px; font-size:0.83rem; color:#94a3b8; text-align:center;">
+                    💡 Ask any maintenance or operational question, or select an exam question from the menu above.
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
     # Question Input Form
     with st.form("chat_qa_form", clear_on_submit=False):
