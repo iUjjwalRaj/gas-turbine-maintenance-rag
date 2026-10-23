@@ -184,7 +184,7 @@ st.markdown(
 
     /* 2. Fullscreen 3D Turbine Viewport Container */
     .st-key-turbine_fullscreen_bg,
-    div:has(> #turbine-fullscreen-anchor) {
+    div[data-testid="stVerticalBlock"].st-key-turbine_fullscreen_bg {
         position: fixed !important;
         top: 0 !important;
         left: 0 !important;
@@ -197,12 +197,24 @@ st.markdown(
         border: none !important;
         pointer-events: auto !important;
     }
-    .st-key-turbine_fullscreen_bg iframe,
-    div:has(> #turbine-fullscreen-anchor) iframe {
+    .st-key-turbine_fullscreen_bg iframe {
         width: 100vw !important;
         height: 100vh !important;
         border: none !important;
         display: block !important;
+    }
+    div:has(> .st-key-turbine_fullscreen_bg),
+    [data-testid="stLayoutWrapper"]:has(> .st-key-turbine_fullscreen_bg) {
+        position: static !important;
+        width: 0 !important;
+        min-width: 0 !important;
+        max-width: 0 !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        max-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        pointer-events: none !important;
     }
 
     /* 3. Top Header Brand Bar (Floating Top-Left) */
@@ -248,7 +260,7 @@ st.markdown(
 
     /* 4. Top-Right System & Document Status Expander Container */
     .st-key-top_status_panel,
-    div:has(> #top-status-anchor) {
+    div[data-testid="stVerticalBlock"].st-key-top_status_panel {
         position: fixed !important;
         top: 20px !important;
         right: 24px !important;
@@ -256,11 +268,22 @@ st.markdown(
         width: 330px !important;
         pointer-events: auto !important;
     }
+    div:has(> .st-key-top_status_panel),
+    [data-testid="stLayoutWrapper"]:has(> .st-key-top_status_panel) {
+        position: static !important;
+        width: 0 !important;
+        min-width: 0 !important;
+        max-width: 0 !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        max-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        pointer-events: none !important;
+    }
     .st-key-top_status_panel [data-testid="stExpander"] summary,
     .st-key-top_status_panel .stExpander summary,
-    .st-key-top_status_panel .streamlit-expanderHeader,
-    div:has(> #top-status-anchor) [data-testid="stExpander"] summary,
-    div:has(> #top-status-anchor) .streamlit-expanderHeader {
+    .st-key-top_status_panel .streamlit-expanderHeader {
         background: rgba(16, 22, 30, 0.82) !important;
         backdrop-filter: blur(16px) !important;
         -webkit-backdrop-filter: blur(16px) !important;
@@ -274,9 +297,7 @@ st.markdown(
     }
     .st-key-top_status_panel [data-testid="stExpander"] [data-testid="stExpanderDetails"],
     .st-key-top_status_panel .stExpander [data-testid="stExpanderDetails"],
-    .st-key-top_status_panel .streamlit-expanderContent,
-    div:has(> #top-status-anchor) [data-testid="stExpander"] [data-testid="stExpanderDetails"],
-    div:has(> #top-status-anchor) .streamlit-expanderContent {
+    .st-key-top_status_panel .streamlit-expanderContent {
         background: rgba(14, 18, 24, 0.94) !important;
         backdrop-filter: blur(20px) !important;
         -webkit-backdrop-filter: blur(20px) !important;
@@ -288,8 +309,9 @@ st.markdown(
     }
 
     /* 5. Floating Glassmorphism Chat Panel (Left Side Viewport) */
-    .st-key-floating_chat_panel,
-    div:has(> #floating-chat-anchor) {
+    /* Target strictly the outer chat panel container surface */
+    div[data-testid="stVerticalBlock"].st-key-floating_chat_panel,
+    .stVerticalBlock.st-key-floating_chat_panel {
         position: fixed !important;
         top: 76px !important;
         left: 24px !important;
@@ -307,6 +329,42 @@ st.markdown(
         overflow-y: auto !important;
         overflow-x: hidden !important;
         pointer-events: auto !important;
+    }
+
+    /* Collapse Streamlit's full-width wrapper so it never creates a 1440px overlay across the turbine */
+    div:has(> .st-key-floating_chat_panel),
+    [data-testid="stLayoutWrapper"]:has(> .st-key-floating_chat_panel) {
+        position: static !important;
+        width: 0 !important;
+        min-width: 0 !important;
+        max-width: 0 !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        max-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        pointer-events: none !important;
+        border: none !important;
+        background: transparent !important;
+        box-shadow: none !important;
+    }
+
+    /* Ensure nested wrappers inside the chat panel have transparent backgrounds and normal static flow */
+    .st-key-floating_chat_panel .stElementContainer,
+    .st-key-floating_chat_panel [data-testid="stElementContainer"],
+    .st-key-floating_chat_panel [data-testid="stLayoutWrapper"],
+    .st-key-floating_chat_panel .stMarkdown,
+    .st-key-floating_chat_panel [data-testid="stMarkdownContainer"] {
+        background: transparent !important;
+        position: static !important;
+        border: none !important;
+        box-shadow: none !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
     }
 
     /* Chat Panel Header */
@@ -690,8 +748,8 @@ st.markdown(
 
     /* Responsive adjustments */
     @media (max-width: 768px) {
-        .st-key-floating_chat_panel,
-        div:has(> #floating-chat-anchor) {
+        div[data-testid="stVerticalBlock"].st-key-floating_chat_panel,
+        .stVerticalBlock.st-key-floating_chat_panel {
             top: auto !important;
             left: 12px !important;
             bottom: 12px !important;
@@ -699,8 +757,7 @@ st.markdown(
             max-width: calc(100vw - 24px) !important;
             max-height: 65vh !important;
         }
-        .st-key-top_status_panel,
-        div:has(> #top-status-anchor) {
+        .st-key-top_status_panel {
             display: none !important;
         }
     }
@@ -737,7 +794,6 @@ if pdf_ready:
 # LAYER 1: Full-Screen 3D Turbine Viewer (Viewport Background)
 # =========================================================================
 with st.container(key="turbine_fullscreen_bg"):
-    st.markdown('<div id="turbine-fullscreen-anchor"></div>', unsafe_allow_html=True)
     viewer_event = turbine_viewer(
         selected_id=st.session_state.get("turbine_selected"),
         height=950,
@@ -772,7 +828,6 @@ st.markdown(
 # LAYER 3: Floating Document & System Status (Top Right Dropdown Expander)
 # =========================================================================
 with st.container(key="top_status_panel"):
-    st.markdown('<div id="top-status-anchor"></div>', unsafe_allow_html=True)
     with st.expander("⚙️ Document & System Status", expanded=False):
         if stats:
             has_gemini = bool(GEMINI_API_KEY and USE_GEMINI)
@@ -819,8 +874,6 @@ with st.container(key="top_status_panel"):
 # LAYER 4: Floating Glassmorphism Chat Panel (Lower Left)
 # =========================================================================
 with st.container(key="floating_chat_panel"):
-    st.markdown('<div id="floating-chat-anchor"></div>', unsafe_allow_html=True)
-
     # Chat Header
     st.markdown(
         """
