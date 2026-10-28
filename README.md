@@ -7,6 +7,7 @@
 [![ChromaDB](https://img.shields.io/badge/VectorDB-ChromaDB-purple.svg)](https://www.trychroma.com/)
 [![Streamlit](https://img.shields.io/badge/UI-Streamlit-red.svg)](https://streamlit.io/)
 [![Tests](https://img.shields.io/badge/Tests-16%2F16%20Passing-brightgreen.svg)](tests/)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
 A complete, production-grade Retrieval-Augmented Generation (RAG) assistant with a cinematic, full-screen 3D engineering interface. The application indexes and queries official GE Vernova technical documentation (**GE GER-3620 Rev P: Heavy-Duty Gas Turbine Operating and Maintenance Considerations**), utilizing **Google Gemini Flash** via `langchain-google-genai` for grounded synthesis with an automatic offline extractive fallback.
 
@@ -313,3 +314,11 @@ tests/test_rag.py::test_gemini_fallback_to_extractive_on_exception PASSED [100%]
 
 ---
 *Developed for the Generative AI Engineering Examination — Project 3 (Gas Turbine Maintenance Assistant).*
+
+---
+
+## License
+
+The original project code is licensed under the [Apache License 2.0](LICENSE).
+
+This license does not automatically apply to third-party documentation, trademarks, datasets, or other assets included in or referenced by the repository. Those materials remain subject to their respective owners' terms and permissions.
